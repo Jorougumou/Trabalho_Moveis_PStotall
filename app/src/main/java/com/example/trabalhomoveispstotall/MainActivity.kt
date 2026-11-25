@@ -8,6 +8,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,9 +27,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.trabalhomoveispstotall.data.UsuarioViewModel
 import com.example.trabalhomoveispstotall.ui.theme.TrabalhoMoveisPStotallTheme
 
 @Composable
@@ -59,22 +63,25 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppNavegacao() {
+fun AppNavegacao(viewModel: UsuarioViewModel = viewModel()) {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = "login") {
         composable("login") {
             TelaEvento(
+                viewModel = viewModel,
                 onEntrarClick = {
                     navController.navigate("home")
                 },
                 onCadastrarUsuarioClick = {
+                    viewModel.mensagemErro = ""
                     navController.navigate("cadastro_usuario")
                 }
             )
         }
         composable("home") {
             TelaPrincipal(
+                viewModel = viewModel,
                 onEntrarClick = {
                     navController.navigate("perfil")
                 },
@@ -85,14 +92,17 @@ fun AppNavegacao() {
         }
         composable("cadastro_usuario") {
             TelaCadastroUsuario(
+                viewModel = viewModel,
                 onVoltarClick = {
+                    viewModel.mensagemErro = ""
                     navController.popBackStack()
                 }
             )
         }
-        composable("perfil"){
+        composable("perfil") {
             TelaPerfilUsuario(
-                onVoltarClick ={
+                viewModel = viewModel,
+                onVoltarClick = {
                     navController.popBackStack()
                 }
             )
@@ -102,6 +112,7 @@ fun AppNavegacao() {
 
 @Composable
 fun TelaEvento(
+    viewModel: UsuarioViewModel,
     onEntrarClick: () -> Unit,
     onCadastrarUsuarioClick: () -> Unit
 ) {
@@ -172,6 +183,13 @@ fun TelaEvento(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (viewModel.mensagemErro.isNotEmpty()) {
+                    Text(
+                        text = viewModel.mensagemErro,
+                        color = corAmarela
+                    )
+                }
             }
 
             Column(
@@ -179,7 +197,11 @@ fun TelaEvento(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
-                    onClick = onEntrarClick,
+                    onClick = {
+                        viewModel.fazerLogin(nomeUsuario, senhaUsuario) {
+                            onEntrarClick()
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = corAmarela),
                     modifier = Modifier.fillMaxWidth(),
                     enabled = nomeUsuario.isNotBlank() && senhaUsuario.isNotBlank()
@@ -201,11 +223,31 @@ fun TelaEvento(
 
 @Composable
 fun TelaPrincipal(
+    viewModel: UsuarioViewModel,
     onVoltarClick: () -> Unit,
     onEntrarClick: () -> Unit
 ) {
     val corFundoVerde = Color(0xFF1B4D2F)
     val corAmarela = Color(0xFFFFC107)
+
+    var mostrarPesquisa by remember { mutableStateOf(false) }
+    var textoBusca by remember { mutableStateOf("") }
+
+    val cursos = listOf(
+        "Todos",
+        "Ciência da Computação",
+        "Engenharia da Computação",
+        "Engenharia de Software"
+    )
+    var indiceCurso by remember { mutableIntStateOf(0) }
+    val cursoSelecionado = cursos[indiceCurso]
+
+    val alunosFiltrados = viewModel.listaUsuarios.filter { aluno ->
+        val correspondeNome = aluno.nome.contains(textoBusca, ignoreCase = true)
+        val correspondeCurso =
+            cursoSelecionado == "Todos" || aluno.curso.equals(cursoSelecionado, ignoreCase = true)
+        correspondeNome && correspondeCurso
+    }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -225,7 +267,7 @@ fun TelaPrincipal(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { /* abrir menu */ }) {
+                IconButton(onClick = onVoltarClick) {
                     Icon(
                         imageVector = Icons.Default.Menu,
                         contentDescription = "Abrir menu"
@@ -238,7 +280,7 @@ fun TelaPrincipal(
                     modifier = Modifier.size(width = 140.dp, height = 48.dp)
                 )
 
-                BotaoPerfil(onClick = { onEntrarClick })
+                BotaoPerfil(onClick = onEntrarClick)
             }
             Row(
                 modifier = Modifier
@@ -248,7 +290,12 @@ fun TelaPrincipal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = { },
+                    onClick = {
+                        mostrarPesquisa = !mostrarPesquisa
+                        if (!mostrarPesquisa) {
+                            textoBusca = ""
+                        }
+                    },
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = corAmarela,
                         contentColor = Color.Black
@@ -260,8 +307,15 @@ fun TelaPrincipal(
                     )
                 }
 
+                Text(
+                    text = "Filtro: $cursoSelecionado",
+                    color = Color.White
+                )
+
                 IconButton(
-                    onClick = {},
+                    onClick = {
+                        indiceCurso = (indiceCurso + 1) % cursos.size
+                    },
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = corAmarela,
                         contentColor = Color.Black
@@ -270,20 +324,112 @@ fun TelaPrincipal(
                     Icon(
                         imageVector = Icons.Default.FilterList,
                         contentDescription = "Filtro",
-
                     )
                 }
             }
 
+            if (mostrarPesquisa) {
+                TextField(
+                    value = textoBusca,
+                    onValueChange = { textoBusca = it },
+                    label = { Text("Buscar aluno pelo nome") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(alunosFiltrados) { aluno ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = "Aluno: ${aluno.nome}", color = Color.Black)
+                            Text(text = "Curso: ${aluno.curso}", color = Color.DarkGray)
+                            Text(text = "Gmail: ${aluno.gmail}", color = Color.DarkGray)
+                        }
+                    }
+                }
+            }
         }
     }
 }
-@Composable
-fun TelaPerfilUsuario(onVoltarClick: () -> Unit){
 
-}
 @Composable
-fun TelaCadastroUsuario(onVoltarClick: () -> Unit) {
+fun TelaPerfilUsuario(
+    viewModel: UsuarioViewModel,
+    onVoltarClick: () -> Unit
+) {
+    val corFundoVerde = Color(0xFF1B4D2F)
+    val corAmarela = Color(0xFFFFC107)
+    val usuario = viewModel.usuarioLogado
+
+    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .background(corFundoVerde)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = "Perfil do Usuário",
+                tint = corAmarela,
+                modifier = Modifier.size(80.dp)
+            )
+
+            Text(text = "Perfil do Aluno", color = Color.White)
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Nome: ${usuario?.nome ?: "Não informado"}",
+                        color = Color.Black
+                    )
+                    Text(
+                        text = "Gmail: ${usuario?.gmail ?: "Não informado"}",
+                        color = Color.Black
+                    )
+                    Text(
+                        text = "Curso: ${usuario?.curso ?: "Não informado"}",
+                        color = Color.Black
+                    )
+                }
+            }
+
+            Button(
+                onClick = onVoltarClick,
+                colors = ButtonDefaults.buttonColors(containerColor = corAmarela),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Voltar", color = Color.Black)
+            }
+        }
+    }
+}
+
+@Composable
+fun TelaCadastroUsuario(
+    viewModel: UsuarioViewModel,
+    onVoltarClick: () -> Unit
+) {
     var nomeUsuario by remember { mutableStateOf("") }
     var senhaUsuario by remember { mutableStateOf("") }
     var senha2Usuario by remember { mutableStateOf("") }
@@ -373,6 +519,13 @@ fun TelaCadastroUsuario(onVoltarClick: () -> Unit) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (viewModel.mensagemErro.isNotEmpty()) {
+                    Text(
+                        text = viewModel.mensagemErro,
+                        color = corAmarela
+                    )
+                }
             }
 
             Column(
@@ -380,11 +533,28 @@ fun TelaCadastroUsuario(onVoltarClick: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
-                    onClick = { /* CRIAR FUNÇÃO COM BACK E VOLTAR PARA TELA */ },
+                    onClick = {
+                        viewModel.cadastrarUsuario(
+                            nome = nomeUsuario,
+                            gmail = gmailUsuario,
+                            curso = cursoUsuario,
+                            senha = senhaUsuario,
+                            confirmarSenha = senha2Usuario,
+                            onSucesso = onVoltarClick
+                        )
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = corAmarela),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Registrar-se", color = Color.Black)
+                }
+
+                Button(
+                    onClick = onVoltarClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = corCinza),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Voltar", color = Color.Black)
                 }
             }
         }
