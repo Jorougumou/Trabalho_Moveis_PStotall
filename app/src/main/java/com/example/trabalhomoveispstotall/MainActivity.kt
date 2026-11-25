@@ -70,8 +70,8 @@ fun AppNavegacao(viewModel: UsuarioViewModel = viewModel()) {
         composable("login") {
             TelaEvento(
                 viewModel = viewModel,
-                onEntrarClick = {
-                    navController.navigate("home")
+                onEntrarClick = { nomeLogado ->
+                    navController.navigate("home/$nomeLogado")
                 },
                 onCadastrarUsuarioClick = {
                     viewModel.mensagemErro = ""
@@ -79,9 +79,11 @@ fun AppNavegacao(viewModel: UsuarioViewModel = viewModel()) {
                 }
             )
         }
-        composable("home") {
+        composable("home/{usuario}") { backStackEntry ->
+            val usuarioArg = backStackEntry.arguments?.getString("usuario") ?: ""
             TelaPrincipal(
                 viewModel = viewModel,
+                nomeUsuarioArgumento = usuarioArg,
                 onEntrarClick = {
                     navController.navigate("perfil")
                 },
@@ -121,6 +123,11 @@ fun AppNavegacao(viewModel: UsuarioViewModel = viewModel()) {
                 viewModel = viewModel,
                 onVoltarClick = {
                     navController.popBackStack()
+                },
+                onContaExcluida = {
+                    navController.navigate("login") {
+                        popUpTo("login") { inclusive = true }
+                    }
                 }
             )
         }
@@ -130,7 +137,7 @@ fun AppNavegacao(viewModel: UsuarioViewModel = viewModel()) {
 @Composable
 fun TelaEvento(
     viewModel: UsuarioViewModel,
-    onEntrarClick: () -> Unit,
+    onEntrarClick: (String) -> Unit,
     onCadastrarUsuarioClick: () -> Unit
 ) {
     var nomeUsuario by remember { mutableStateOf("") }
@@ -216,7 +223,7 @@ fun TelaEvento(
                 Button(
                     onClick = {
                         viewModel.fazerLogin(nomeUsuario, senhaUsuario) {
-                            onEntrarClick()
+                            onEntrarClick(nomeUsuario)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = corAmarela),
@@ -238,9 +245,11 @@ fun TelaEvento(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TelaPrincipal(
     viewModel: UsuarioViewModel,
+    nomeUsuarioArgumento: String = "",
     onVoltarClick: () -> Unit,
     onEntrarClick: () -> Unit,
     onCadastrarAlunoClick: () -> Unit = {},
@@ -248,6 +257,7 @@ fun TelaPrincipal(
 ) {
     val corFundoVerde = Color(0xFF1B4D2F)
     val corAmarela = Color(0xFFFFC107)
+    val corCinza = Color(0xFFD6D6D6)
 
     var mostrarPesquisa by remember { mutableStateOf(false) }
     var textoBusca by remember { mutableStateOf("") }
@@ -261,6 +271,9 @@ fun TelaPrincipal(
     var indiceStatus by remember { mutableIntStateOf(0) }
     val statusSelecionado = listaStatus[indiceStatus]
 
+    val isAdmin = viewModel.usuarioLogado?.nome.equals("admin", ignoreCase = true) ||
+            nomeUsuarioArgumento.equals("admin", ignoreCase = true)
+
     val processosFiltrados = viewModel.listaProcessos.filter { ps ->
         val correspondeProjeto = ps.projeto.contains(textoBusca, ignoreCase = true)
         val correspondeStatus =
@@ -268,7 +281,40 @@ fun TelaPrincipal(
         correspondeProjeto && correspondeStatus
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = corAmarela
+                ),
+                navigationIcon = {
+                    IconButton(onClick = onVoltarClick) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Abrir menu"
+                        )
+                    }
+                },
+                title = {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.bannerrussas),
+                            contentDescription = "banner UFC Russas",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(width = 140.dp, height = 48.dp)
+                        )
+                    }
+                },
+                actions = {
+                    BotaoPerfil(onClick = onEntrarClick)
+                }
+            )
+        }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .padding(innerPadding)
@@ -278,29 +324,6 @@ fun TelaPrincipal(
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(corAmarela)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onVoltarClick) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Abrir menu"
-                    )
-                }
-                Image(
-                    painter = painterResource(id = R.drawable.bannerrussas),
-                    contentDescription = "banner UFC Russas",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(width = 140.dp, height = 48.dp)
-                )
-
-                BotaoPerfil(onClick = onEntrarClick)
-            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -359,7 +382,7 @@ fun TelaPrincipal(
                 )
             }
 
-            if (viewModel.usuarioLogado?.nome.equals("admin", ignoreCase = true)) {
+            if (isAdmin) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -395,13 +418,41 @@ fun TelaPrincipal(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color.White)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Text(text = "Projeto: ${ps.projeto}", color = Color.Black)
                             Text(
                                 text = "Início: ${ps.dataInicio} | Término: ${ps.dataTermino}",
                                 color = Color.DarkGray
                             )
                             Text(text = "Status: ${ps.status}", color = Color.DarkGray)
+
+                            if (isAdmin) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { viewModel.atualizarStatusProcesso(ps) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = corAmarela),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Mudar Status", color = Color.Black)
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.excluirProcesso(ps) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = corCinza),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Excluir", color = Color.Black)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -413,11 +464,18 @@ fun TelaPrincipal(
 @Composable
 fun TelaPerfilUsuario(
     viewModel: UsuarioViewModel,
-    onVoltarClick: () -> Unit
+    onVoltarClick: () -> Unit,
+    onContaExcluida: () -> Unit = {}
 ) {
     val corFundoVerde = Color(0xFF1B4D2F)
     val corAmarela = Color(0xFFFFC107)
+    val corCinza = Color(0xFFD6D6D6)
     val usuario = viewModel.usuarioLogado
+
+    var nomeEditado by remember(usuario) { mutableStateOf(usuario?.nome ?: "") }
+    var gmailEditado by remember(usuario) { mutableStateOf(usuario?.gmail ?: "") }
+    var cursoEditado by remember(usuario) { mutableStateOf(usuario?.curso ?: "") }
+    var mensagemSalvo by remember { mutableStateOf("") }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -425,8 +483,9 @@ fun TelaPerfilUsuario(
                 .padding(innerPadding)
                 .fillMaxSize()
                 .background(corFundoVerde)
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
@@ -438,32 +497,60 @@ fun TelaPerfilUsuario(
 
             Text(text = "Perfil do Aluno", color = Color.White)
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White)
+            TextField(
+                value = nomeEditado,
+                onValueChange = { nomeEditado = it },
+                label = { Text("Nome") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            TextField(
+                value = gmailEditado,
+                onValueChange = { gmailEditado = it },
+                label = { Text("Gmail") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            TextField(
+                value = cursoEditado,
+                onValueChange = { cursoEditado = it },
+                label = { Text("Curso") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (mensagemSalvo.isNotEmpty()) {
+                Text(text = mensagemSalvo, color = corAmarela)
+            }
+
+            Button(
+                onClick = {
+                    viewModel.atualizarPerfil(nomeEditado, gmailEditado, cursoEditado)
+                    mensagemSalvo = "Dados atualizados com sucesso!"
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = corAmarela),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Nome: ${usuario?.nome ?: "Não informado"}",
-                        color = Color.Black
-                    )
-                    Text(
-                        text = "Gmail: ${usuario?.gmail ?: "Não informado"}",
-                        color = Color.Black
-                    )
-                    Text(
-                        text = "Curso: ${usuario?.curso ?: "Não informado"}",
-                        color = Color.Black
-                    )
-                }
+                Text("Salvar Alterações", color = Color.Black)
+            }
+
+            Button(
+                onClick = {
+                    viewModel.excluirConta {
+                        onContaExcluida()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = corCinza),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Excluir Conta", color = Color.Black)
             }
 
             Button(
                 onClick = onVoltarClick,
-                colors = ButtonDefaults.buttonColors(containerColor = corAmarela),
+                colors = ButtonDefaults.buttonColors(containerColor = corCinza),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Voltar", color = Color.Black)
